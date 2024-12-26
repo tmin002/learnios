@@ -17,5 +17,12 @@ struct learniosApp: App {
     }
     
     init() {
+        Task {
+            do {
+                
+            } catch {
+                print("errorinit: \(error)")
+            }
+        }
     }
 }

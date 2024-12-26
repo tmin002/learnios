@@ -11,9 +11,7 @@ class ChatRequest(BaseModel):
 
 @app.post('/chat')
 def send_chat(req: ChatRequest):
-    return {
-        "message": gpt.send_gpt(req.text)
-    }
+    return gpt.send_gpt(req.text)
 
 @app.get('/get_reminders')
 def get_reminders():
@@ -22,8 +20,9 @@ def get_reminders():
         return_obj.append(reminder.ReminderController.reminders[r].by_dict())
     return {'reminders': return_obj}
 
-@app.post('/remove_reminder/')
+@app.get('/remove_reminder')
 def remove_reminder(id: int = None):
+    print(f'=============== id={id}')
     target_reminder = reminder.ReminderController.reminders[id]
     reminder.ReminderController.remove_reminder(id)
     return {"removed_reminder": target_reminder.by_dict()}

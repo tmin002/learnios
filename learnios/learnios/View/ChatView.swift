@@ -3,7 +3,7 @@ import UIKit
 
 struct UserMessage: View {
     var text: String
-    init(_ text: String = "Hello") {
+    init(_ text: String) {
         self.text = text
     }
     
@@ -16,20 +16,39 @@ struct UserMessage: View {
     }
 }
 
-struct AIMessage: View {
+struct ServerResponse: View {
     
-    var message: String
-    var responseDetail: String?
-    var responseType: ChatResponse.ResponseType
-    var targetReminder: Reminder?
-    var error: Bool
+    var chatResponse: ChatResponse
+    var message: String?
+    var detail: String?
+    var backgroundColor: Color?
+    var iconName: String?
     
-    init(_ message: String = "Hello", responseDetail: String? = nil, responseType: ChatResponse.ResponseType = .plainMessage, targetReminder: Reminder? = nil) {
-        self.message = message
-        self.responseDetail = responseDetail
-        self.responseType = responseType
-        self.targetReminder = targetReminder
-        self.error = (self.responseType == .error)
+    init(response: ChatResponse) {
+        self.chatResponse = response
+        self.message = response.message
+        
+        switch chatResponse.responseType {
+        case .reminderAdded:
+            self.detail = "Reminder added:"
+                 + "\n\(chatResponse.targetReminder!.title),"
+                 + "\(chatResponse.targetReminder!.getDate.description)"
+            self.backgroundColor = Color.blue.opacity(0.3)
+            self.iconName = "info.circle"
+            if self.message == nil {
+                self.message = "Reminder added!"
+            }
+            
+        case .error:
+            self.detail = "Error: \(response.detail!)"
+            self.backgroundColor = Color.red.opacity(0.3)
+            self.iconName = "exclamationmark.triangle"
+
+        case .plainMessage:
+            self.detail = nil
+            self.backgroundColor = nil
+            self.iconName = nil
+        }
     }
     
     var body: some View {
@@ -37,29 +56,22 @@ struct AIMessage: View {
             Image(systemName: "apple.terminal")
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 10)
-            Text(self.message)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                 
-            
-            if self.responseType != .plainMessage {
+            if let message = self.message {
+                Text(message)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if self.chatResponse.responseType != .plainMessage {
                 HStack {
-                    Image(systemName: self.error ? "exclamationmark.triangle" : "info.circle")
+                    Image(systemName: self.iconName!)
                         .padding(.horizontal, 10)
                     VStack {
-                        Text(responseType.description())
+                        Text(self.detail!)
                             .font(.callout)
-                            .fontWeight(.semibold)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 10)
-                        if let detail = self.responseDetail {
-                            Text(detail)
-                                .font(.callout)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 10)
-                        }
                     }
                 }
-                    .background((self.error ? Color.red : Color.blue).opacity(0.3))
+                    .background(self.backgroundColor!)
                     .cornerRadius(10)
                     .padding()
             }
@@ -73,6 +85,29 @@ struct AIMessage: View {
 struct ChatView: View {
     @State private var inputText: String = "hello world"
     @State private var showAlarmList: Bool = false
+    @State private var isWaitingResponse: Bool = false
+    @State var chatViews: [AnyView] = []
+    
+    func send(_ text: String) -> Void {
+        if isWaitingResponse {
+            return
+        }
+        isWaitingResponse = true
+        inputText = ""
+        
+        Task {
+            do {
+                self.chatViews.append(AnyView(UserMessage(text)))
+                let response: ChatResponse = try await Chat.chat(text)
+                self.chatViews.append(AnyView(ServerResponse(response: response)))
+                isWaitingResponse = false
+            } catch {
+                self.chatViews.append(AnyView(ServerResponse(
+                    response: ChatResponse(.error, detail: "Client error: \(error)"))))
+                isWaitingResponse = false
+            }
+        }
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -84,6 +119,11 @@ struct ChatView: View {
                 .sheet(isPresented: $showAlarmList) {
                     ReminderListView()
                 }
+                Spacer()
+                Button("Clear") {
+                    chatViews.removeAll()
+                }
+                .padding(5)
             }
                 .padding(.horizontal, 20)
                 .frame(maxWidth: .infinity, minHeight: 50, alignment: .leading)
@@ -97,16 +137,9 @@ struct ChatView: View {
             VStack {
                 ScrollView {
                     VStack {
-                        UserMessage()
-                        AIMessage("Hello! How can I help you today?", responseDetail: "server not respond", responseType: .error)
-                        UserMessage()
-                        AIMessage("Hello! How can I help you today?", responseType: .reminderAdded)
-                        UserMessage()
-                        AIMessage("Hello! How can I help you today?")
-                        UserMessage()
-                        AIMessage("Hello! How can I help you today?")
-                        UserMessage()
-                        AIMessage("Hello! How can I help you today?")
+                        ForEach(chatViews.indices, id: \.self) { index in
+                            chatViews[index]
+                        }
                     }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding()
@@ -117,11 +150,13 @@ struct ChatView: View {
                         .background(.gray)
                         .padding(Edge.Set.horizontal, 10)
                         .multilineTextAlignment(.leading)
-                    Button(action: {}) {
+                    Button(action: {
+                        self.send(inputText)
+                    }) {
                         Image(systemName: "paperplane.fill")
                             .frame(width: 30, height: 30)
                             .foregroundColor(Color.white)
-                            .background(Color.blue)
+                            .background(self.isWaitingResponse ? Color.gray : Color.blue)
                             .clipShape(Circle())
                     }
                     .padding(10)

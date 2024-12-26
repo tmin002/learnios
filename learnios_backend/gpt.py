@@ -54,4 +54,5 @@ def send_gpt(text: str):
     if 'response' in gpt_response:
         return_obj['response'] = gpt_response['response']
     
+    print(return_obj)
     return return_obj
